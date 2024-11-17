@@ -9,54 +9,61 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import os
 
-# 定义 root_mean_squared_error 函数
+# Define root_mean_squared_error function
 def root_mean_squared_error(y_true, y_pred):
     return np.sqrt(mean_squared_error(y_true, y_pred))
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 
-# 加载数据
+# Load data
 train_data = pd.read_csv(os.path.join(root_dir, 'data', 'train.csv'))
 test_data = pd.read_csv(os.path.join(root_dir, 'data', 'test.csv'))
 
-# 处理缺失值
-train_data = train_data.dropna()
-test_data = test_data.dropna()
+# Fill missing values for numerical variables
+num_cols = train_data.select_dtypes(include=[np.number]).columns
+num_cols = num_cols.drop('price')  # Remove target variable 'price'
+train_data[num_cols] = train_data[num_cols].interpolate(method='linear')
+test_data[num_cols] = test_data[num_cols].interpolate(method='linear')
 
-# 合并数据进行编码
+# Fill missing values for categorical variables
+cat_cols = train_data.select_dtypes(include=[object]).columns
+for col in cat_cols:
+    train_data[col] = train_data[col].fillna(train_data[col].mode()[0])
+    test_data[col] = test_data[col].fillna(test_data[col].mode()[0])
+
+# Combine data for encoding
 combined_data = pd.concat([train_data, test_data], ignore_index=True)
 
 # One-Hot Encoding
 encoder = OneHotEncoder(sparse_output=False)
 encoded_features = encoder.fit_transform(combined_data[['manufacturer', 'model', 'gearbox_type', 'fuel_type']])
 
-# 归一化数值特征
-scaler = StandardScaler()
-scaled_features = scaler.fit_transform(combined_data[['year', 'engine_capacity', 'operating_hours', 'efficiency']])
-
-# 拆分回训练集和测试集
+# Split back encoded features
 encoded_train_features = encoded_features[:len(train_data)]
 encoded_test_features = encoded_features[len(train_data):]
-scaled_train_features = scaled_features[:len(train_data)]
-scaled_test_features = scaled_features[len(train_data):]
 
-# 合并特征
+# Normalise numerical features SEPERATELY for train & test
+scaler = StandardScaler()
+scaled_train_features = scaler.fit_transform(train_data[['year', 'engine_capacity', 'operating_hours', 'efficiency']])
+scaled_test_features = scaler.transform(test_data[['year', 'engine_capacity', 'operating_hours', 'efficiency']])
+
+# Combine features
 X_train = np.hstack([encoded_train_features, scaled_train_features])
 X_test = np.hstack([encoded_test_features, scaled_test_features])
 y_train = train_data['price'].values
 
-# 划分数据集
+# Split dataset
 X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
 
-# 转换为PyTorch张量
+# Convert to PyTorch tensors
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
 y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
 X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
 y_val_tensor = torch.tensor(y_val, dtype=torch.float32).view(-1, 1)
 X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
 
-# 定义模型
+# Define model architecture
 class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
@@ -64,7 +71,7 @@ class MLP(nn.Module):
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, 64)
         self.fc4 = nn.Linear(64, 1)
-        self.dropout = nn.Dropout(0.5)  # 添加Dropout
+        self.dropout = nn.Dropout(0.5)  # Add Dropout
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -77,9 +84,9 @@ class MLP(nn.Module):
 
 model = MLP()
 criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay=1e-5)  # 设置更小的学习率和L2正则化
+optimizer = optim.Adam(model.parameters(), lr=0.0005, weight_decay=1e-5)  # Set smaller learning rate and L2 regularization
 
-# 使用K-Fold交叉验证评估模型性能
+# Use K-Fold cross validation to evaluate model performance
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 cross_val_rmse = []
 
@@ -106,7 +113,7 @@ for train_index, val_index in kf.split(X_train):
 
 print(f'Cross-Validation RMSE: {np.mean(cross_val_rmse)}')
 
-# 训练模型
+# Train model
 train_dataset_full = TensorDataset(X_train_tensor, y_train_tensor)
 train_loader_full = DataLoader(train_dataset_full, batch_size=32, shuffle=True)
 
@@ -119,20 +126,20 @@ for epoch in range(100):
         loss.backward()
         optimizer.step()
 
-# 评估模型
+# Evaluate model
 model.eval()
 with torch.no_grad():
     val_outputs_full = model(X_val_tensor)
     rmse_full = root_mean_squared_error(y_val_tensor.numpy(), val_outputs_full.numpy())
 print(f'Validation RMSE: {rmse_full}')
 
-# 在测试集上进行预测
+# Make predictions on test set
 with torch.no_grad():
     test_predictions_full = model(X_test_tensor).numpy()
 
-# 保存预测结果
+# Save predictions
 submission_full = pd.DataFrame({'id': test_data['id'], 'answer': test_predictions_full.flatten()})
 submission_full.to_csv(os.path.join(root_dir, 'submission.csv'), index=False)
 
-# 保存模型
+# Save model
 torch.save(model.state_dict(), os.path.join(root_dir, 'model.pth'))
