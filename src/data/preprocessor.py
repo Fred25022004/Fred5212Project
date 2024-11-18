@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+import pandas as pd
 
 class DataPreprocessor:
     def __init__(self):
