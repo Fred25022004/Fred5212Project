@@ -8,7 +8,7 @@ class MLP(nn.Module):
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, 64)
         self.fc4 = nn.Linear(64, 1)
-        self.dropout = nn.Dropout(0.15)
+        self.dropout = nn.Dropout(0.4)
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))

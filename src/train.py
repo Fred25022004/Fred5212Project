@@ -88,8 +88,8 @@ for train_index, val_index in kf.split(X_train):
         val_outputs = model(X_val_fold)
         val_rmse = root_mean_squared_error(y_val_fold.numpy(), val_outputs.numpy())
         cross_val_rmse.append(val_rmse)
-
-print(f'Cross-Validation RMSE: {np.mean(cross_val_rmse)}')
+        print(f'current: {val_rmse}')
+print(f'Cross-Validation RMSE: {np.mean(cross_val_rmse)}, std: {np.std(cross_val_rmse)}')
 
 # Train final model
 train_dataset_full = TensorDataset(X_train_tensor, y_train_tensor)
