@@ -1,42 +1,71 @@
-import numpy as np
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
 
 class DataPreprocessor:
     def __init__(self):
-        self.encoder = OneHotEncoder(sparse_output=False)
-        self.scaler = StandardScaler()
+        self.label_encoders = {}
+        self.categorical_columns = ['manufacturer', 'model', 'gearbox_type', 'fuel_type']
+
+    def fit_transform(self, df):
+        df = df.copy()
         
-    def fit_transform(self, train_data, test_data):
-        # Handle missing values
-        num_cols = train_data.select_dtypes(include=[np.number]).columns
-        num_cols = num_cols.drop('price')
+        # Basic Encoding
+        for col in self.categorical_columns:
+            self.label_encoders[col] = LabelEncoder()
+            df[col] = self.label_encoders[col].fit_transform(df[col])
+
+        # Feature Engineering
+        # Age-related features
+        current_year = 2024
+        df['vehicle_age'] = current_year - df['year']
         
-        train_data[num_cols] = train_data[num_cols].interpolate(method='linear')
-        test_data[num_cols] = test_data[num_cols].interpolate(method='linear')
+        # Usage intensity
+        df['hours_per_year'] = df['operating_hours'] / df['vehicle_age']
         
-        cat_cols = train_data.select_dtypes(include=[object]).columns
-        for col in cat_cols:
-            train_data[col] = train_data[col].fillna(train_data[col].mode()[0])
-            test_data[col] = test_data[col].fillna(test_data[col].mode()[0])
-            
-        # Encode categorical features
-        combined_data = pd.concat([train_data, test_data], ignore_index=True)
-        encoded_features = self.encoder.fit_transform(
-            combined_data[['manufacturer', 'model', 'gearbox_type', 'fuel_type']])
+        # Efficiency-related features
+        df['power_efficiency'] = df['efficiency'] / df['engine_capacity']
         
-        encoded_train = encoded_features[:len(train_data)]
-        encoded_test = encoded_features[len(train_data):]
+        # Cost-related features
+        df['registration_cost_per_capacity'] = df['registration_fees'] / df['engine_capacity']
         
-        # Scale numerical features
-        scaled_train = self.scaler.fit_transform(
-            train_data[['year', 'engine_capacity', 'operating_hours', 'efficiency']])
-        scaled_test = self.scaler.transform(
-            test_data[['year', 'engine_capacity', 'operating_hours', 'efficiency']])
+        # Categorical interaction features
+        df['manufacturer_model'] = df['manufacturer'].astype(str) + '_' + df['model'].astype(str)
+        self.label_encoders['manufacturer_model'] = LabelEncoder()
+        df['manufacturer_model'] = self.label_encoders['manufacturer_model'].fit_transform(df['manufacturer_model'])
+
+        # Normalize numeric columns
+        numeric_columns = ['year', 'operating_hours', 'registration_fees', 'efficiency', 
+                         'engine_capacity', 'vehicle_age', 'hours_per_year', 
+                         'power_efficiency', 'registration_cost_per_capacity',
+                         'manufacturer_model']
         
-        # Combine features
-        X_train = np.hstack([encoded_train, scaled_train])
-        X_test = np.hstack([encoded_test, scaled_test])
-        y_train = train_data['price'].values
+        df[numeric_columns] = (df[numeric_columns] - df[numeric_columns].mean()) / df[numeric_columns].std()
         
-        return X_train, X_test, y_train
+        return df
+
+    def transform(self, df):
+        df = df.copy()
+        
+        for col in self.categorical_columns:
+            df[col] = self.label_encoders[col].transform(df[col])
+
+        # Feature Engineering (same as above)
+        current_year = 2024
+        df['vehicle_age'] = current_year - df['year']
+        df['hours_per_year'] = df['operating_hours'] / df['vehicle_age']
+        df['power_efficiency'] = df['efficiency'] / df['engine_capacity']
+        df['registration_cost_per_capacity'] = df['registration_fees'] / df['engine_capacity']
+        
+        df['manufacturer_model'] = df['manufacturer'].astype(str) + '_' + df['model'].astype(str)
+        df['manufacturer_model'] = self.label_encoders['manufacturer_model'].transform(df['manufacturer_model'])
+
+        # Normalize numeric columns
+        numeric_columns = ['year', 'operating_hours', 'registration_fees', 'efficiency', 
+                         'engine_capacity', 'vehicle_age', 'hours_per_year', 
+                         'power_efficiency', 'registration_cost_per_capacity',
+                         'manufacturer_model']
+        
+        df[numeric_columns] = (df[numeric_columns] - df[numeric_columns].mean()) / df[numeric_columns].std()
+        
+        return df
