@@ -92,12 +92,12 @@ for fold, (train_index, val_index) in enumerate(kf.split(X_train)):
     optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate'], weight_decay=CONFIG['weight_decay'])
     # 添加学习率调度器
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode='min',
-        factor=0.5,
-        patience=5,
-        min_lr=1e-6
-    )
+    optimizer,
+    mode='min',
+    factor=CONFIG['lr_scheduler']['factor'],
+    patience=CONFIG['lr_scheduler']['patience'],
+    min_lr=CONFIG['lr_scheduler']['min_lr']
+)
     early_stopping = EarlyStopping(patience=CONFIG['patience'])
     
     X_train_fold, X_val_fold = X_train_tensor[train_index], X_train_tensor[val_index]
