@@ -1,2 +1,2 @@
 # run train script
-python src/train.py
+python src/predict.py

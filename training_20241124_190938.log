@@ -1,0 +1,169 @@
+2024-11-24 19:09:38,124 - INFO - 
+==================================================
+2024-11-24 19:09:38,125 - INFO - Data Analysis:
+2024-11-24 19:09:38,125 - INFO - Training set shape: (11576, 197)
+2024-11-24 19:09:38,125 - INFO - Test set shape: (2000, 197)
+2024-11-24 19:09:38,125 - INFO - 
+Target distribution:
+2024-11-24 19:09:38,125 - INFO - Mean: 16829.09
+2024-11-24 19:09:38,125 - INFO - Std: 9786.48
+2024-11-24 19:09:38,125 - INFO - Min: 795.00
+2024-11-24 19:09:38,125 - INFO - Max: 126000.00
+2024-11-24 19:09:38,125 - INFO - ==================================================
+
+2024-11-24 19:09:38,136 - INFO - Starting K-Fold Cross Validation
+2024-11-24 19:09:38,136 - INFO - Configuration: {'learning_rate': 0.002, 'weight_decay': 0.001, 'batch_size': 64, 'epochs': 120, 'random_state': 42, 'patience': 15, 'lr_scheduler': {'factor': 0.5, 'patience': 15, 'min_lr': 0.0001}}
+2024-11-24 19:09:38,137 - INFO - 
+Fold 1/5
+2024-11-24 19:09:38,137 - INFO - Train size: 9260, Validation size: 2316
+2024-11-24 19:09:48,512 - INFO - Epoch 20/120:
+2024-11-24 19:09:48,512 - INFO -   Training Loss: 201575034.0414
+2024-11-24 19:09:48,512 - INFO -   Validation RMSE: 13590.6924
+2024-11-24 19:09:48,512 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:09:59,568 - INFO - Epoch 40/120:
+2024-11-24 19:09:59,569 - INFO -   Training Loss: 32674086.5448
+2024-11-24 19:09:59,569 - INFO -   Validation RMSE: 5669.6445
+2024-11-24 19:09:59,569 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:10:10,676 - INFO - Epoch 60/120:
+2024-11-24 19:10:10,676 - INFO -   Training Loss: 12952085.4690
+2024-11-24 19:10:10,676 - INFO -   Validation RMSE: 2674.1331
+2024-11-24 19:10:10,676 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:10:21,702 - INFO - Epoch 80/120:
+2024-11-24 19:10:21,703 - INFO -   Training Loss: 9532723.3879
+2024-11-24 19:10:21,703 - INFO -   Validation RMSE: 2353.3892
+2024-11-24 19:10:21,703 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:10:29,367 - INFO - Early stopping triggered at epoch 94
+2024-11-24 19:10:29,370 - INFO - Fold 1 best RMSE: 2144.9243
+2024-11-24 19:10:29,371 - INFO - 
+Fold 2/5
+2024-11-24 19:10:29,371 - INFO - Train size: 9261, Validation size: 2315
+2024-11-24 19:10:40,470 - INFO - Epoch 20/120:
+2024-11-24 19:10:40,470 - INFO -   Training Loss: 197291150.8414
+2024-11-24 19:10:40,470 - INFO -   Validation RMSE: 14392.6885
+2024-11-24 19:10:40,471 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:10:51,611 - INFO - Epoch 40/120:
+2024-11-24 19:10:51,612 - INFO -   Training Loss: 32437771.3103
+2024-11-24 19:10:51,612 - INFO -   Validation RMSE: 5513.7988
+2024-11-24 19:10:51,612 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:11:02,769 - INFO - Epoch 60/120:
+2024-11-24 19:11:02,769 - INFO -   Training Loss: 12163985.2000
+2024-11-24 19:11:02,769 - INFO -   Validation RMSE: 2982.0049
+2024-11-24 19:11:02,769 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:11:13,998 - INFO - Epoch 80/120:
+2024-11-24 19:11:13,999 - INFO -   Training Loss: 8762269.2586
+2024-11-24 19:11:13,999 - INFO -   Validation RMSE: 2721.3594
+2024-11-24 19:11:13,999 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:11:25,217 - INFO - Epoch 100/120:
+2024-11-24 19:11:25,217 - INFO -   Training Loss: 7791028.7397
+2024-11-24 19:11:25,217 - INFO -   Validation RMSE: 2862.1719
+2024-11-24 19:11:25,217 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:11:30,221 - INFO - Early stopping triggered at epoch 109
+2024-11-24 19:11:30,225 - INFO - Fold 2 best RMSE: 2597.1306
+2024-11-24 19:11:30,225 - INFO - 
+Fold 3/5
+2024-11-24 19:11:30,225 - INFO - Train size: 9261, Validation size: 2315
+2024-11-24 19:11:41,687 - INFO - Epoch 20/120:
+2024-11-24 19:11:41,688 - INFO -   Training Loss: 197153777.4897
+2024-11-24 19:11:41,689 - INFO -   Validation RMSE: 14169.3594
+2024-11-24 19:11:41,689 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:11:53,129 - INFO - Epoch 40/120:
+2024-11-24 19:11:53,129 - INFO -   Training Loss: 31875989.4966
+2024-11-24 19:11:53,129 - INFO -   Validation RMSE: 5919.5195
+2024-11-24 19:11:53,129 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:12:04,814 - INFO - Epoch 60/120:
+2024-11-24 19:12:04,815 - INFO -   Training Loss: 11598232.2052
+2024-11-24 19:12:04,815 - INFO -   Validation RMSE: 3798.4963
+2024-11-24 19:12:04,815 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:12:16,100 - INFO - Epoch 80/120:
+2024-11-24 19:12:16,100 - INFO -   Training Loss: 7938242.2534
+2024-11-24 19:12:16,100 - INFO -   Validation RMSE: 3246.3811
+2024-11-24 19:12:16,100 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:12:27,491 - INFO - Epoch 100/120:
+2024-11-24 19:12:27,491 - INFO -   Training Loss: 7202331.5336
+2024-11-24 19:12:27,491 - INFO -   Validation RMSE: 3259.1208
+2024-11-24 19:12:27,491 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:12:37,173 - INFO - Early stopping triggered at epoch 117
+2024-11-24 19:12:37,177 - INFO - Fold 3 best RMSE: 3127.4021
+2024-11-24 19:12:37,178 - INFO - 
+Fold 4/5
+2024-11-24 19:12:37,178 - INFO - Train size: 9261, Validation size: 2315
+2024-11-24 19:12:48,147 - INFO - Epoch 20/120:
+2024-11-24 19:12:48,147 - INFO -   Training Loss: 198923427.4759
+2024-11-24 19:12:48,148 - INFO -   Validation RMSE: 13694.9219
+2024-11-24 19:12:48,148 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:12:59,105 - INFO - Epoch 40/120:
+2024-11-24 19:12:59,105 - INFO -   Training Loss: 32932942.0759
+2024-11-24 19:12:59,105 - INFO -   Validation RMSE: 5875.2651
+2024-11-24 19:12:59,105 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:13:10,155 - INFO - Epoch 60/120:
+2024-11-24 19:13:10,156 - INFO -   Training Loss: 12685023.3914
+2024-11-24 19:13:10,156 - INFO -   Validation RMSE: 2741.1760
+2024-11-24 19:13:10,156 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:13:21,155 - INFO - Epoch 80/120:
+2024-11-24 19:13:21,155 - INFO -   Training Loss: 9276075.3862
+2024-11-24 19:13:21,155 - INFO -   Validation RMSE: 2355.9089
+2024-11-24 19:13:21,155 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:13:32,214 - INFO - Epoch 100/120:
+2024-11-24 19:13:32,214 - INFO -   Training Loss: 7911884.8310
+2024-11-24 19:13:32,214 - INFO -   Validation RMSE: 2188.9390
+2024-11-24 19:13:32,214 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:13:36,105 - INFO - Early stopping triggered at epoch 107
+2024-11-24 19:13:36,109 - INFO - Fold 4 best RMSE: 2131.7441
+2024-11-24 19:13:36,110 - INFO - 
+Fold 5/5
+2024-11-24 19:13:36,110 - INFO - Train size: 9261, Validation size: 2315
+2024-11-24 19:13:47,503 - INFO - Epoch 20/120:
+2024-11-24 19:13:47,504 - INFO -   Training Loss: 199886585.7655
+2024-11-24 19:13:47,504 - INFO -   Validation RMSE: 13625.8379
+2024-11-24 19:13:47,504 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:13:59,470 - INFO - Epoch 40/120:
+2024-11-24 19:13:59,470 - INFO -   Training Loss: 33013318.4828
+2024-11-24 19:13:59,470 - INFO -   Validation RMSE: 5354.6748
+2024-11-24 19:13:59,470 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:14:10,974 - INFO - Epoch 60/120:
+2024-11-24 19:14:10,975 - INFO -   Training Loss: 13146180.1448
+2024-11-24 19:14:10,975 - INFO -   Validation RMSE: 2713.4761
+2024-11-24 19:14:10,975 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:14:22,068 - INFO - Epoch 80/120:
+2024-11-24 19:14:22,068 - INFO -   Training Loss: 8316664.0147
+2024-11-24 19:14:22,068 - INFO -   Validation RMSE: 2157.8081
+2024-11-24 19:14:22,068 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:14:33,133 - INFO - Epoch 100/120:
+2024-11-24 19:14:33,133 - INFO -   Training Loss: 7847275.0724
+2024-11-24 19:14:33,133 - INFO -   Validation RMSE: 2093.2856
+2024-11-24 19:14:33,133 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:14:44,228 - INFO - Epoch 120/120:
+2024-11-24 19:14:44,229 - INFO -   Training Loss: 7459236.3621
+2024-11-24 19:14:44,229 - INFO -   Validation RMSE: 2155.8213
+2024-11-24 19:14:44,229 - INFO -   Current Learning Rate: 0.002000
+2024-11-24 19:14:44,232 - INFO - Fold 5 best RMSE: 2055.4634
+2024-11-24 19:14:44,233 - INFO - 
+Cross-Validation Results:
+2024-11-24 19:14:44,233 - INFO - Mean RMSE: 2411.3328
+2024-11-24 19:14:44,233 - INFO - Std RMSE: 405.7246
+2024-11-24 19:14:44,233 - INFO - 
+Training Final Model
+2024-11-24 19:14:51,044 - INFO - Epoch 10/120:
+2024-11-24 19:14:51,044 - INFO -   Training Loss: 7802992.7196
+2024-11-24 19:14:51,045 - INFO -   Learning Rate: 0.002000
+2024-11-24 19:14:57,844 - INFO - Epoch 20/120:
+2024-11-24 19:14:57,844 - INFO -   Training Loss: 8030298.4254
+2024-11-24 19:14:57,844 - INFO -   Learning Rate: 0.001000
+2024-11-24 19:15:04,649 - INFO - Epoch 30/120:
+2024-11-24 19:15:04,650 - INFO -   Training Loss: 7467090.7127
+2024-11-24 19:15:04,650 - INFO -   Learning Rate: 0.000500
+2024-11-24 19:15:11,593 - INFO - Epoch 40/120:
+2024-11-24 19:15:11,594 - INFO -   Training Loss: 7143740.9385
+2024-11-24 19:15:11,594 - INFO -   Learning Rate: 0.000250
+2024-11-24 19:15:18,565 - INFO - Epoch 50/120:
+2024-11-24 19:15:18,566 - INFO -   Training Loss: 7111974.6906
+2024-11-24 19:15:18,566 - INFO -   Learning Rate: 0.000125
+2024-11-24 19:15:25,562 - INFO - Epoch 60/120:
+2024-11-24 19:15:25,563 - INFO -   Training Loss: 7439148.7880
+2024-11-24 19:15:25,563 - INFO -   Learning Rate: 0.000125
+2024-11-24 19:15:32,587 - INFO - Epoch 70/120:
+2024-11-24 19:15:32,587 - INFO -   Training Loss: 7068381.4945
+2024-11-24 19:15:32,587 - INFO -   Learning Rate: 0.000031
+2024-11-24 19:15:32,587 - INFO - Early stopping triggered at epoch 70
+2024-11-24 19:15:32,599 - INFO - 
+Training completed. Best model and predictions saved.

@@ -218,18 +218,6 @@ for epoch in range(CONFIG['epochs']):
 # 加载最佳模型状态
 final_model.load_state_dict(early_stopping.best_model)
 
-# 预测测试集
-final_model.eval()
-with torch.no_grad():
-    test_predictions = final_model(X_test_tensor).numpy()
-
-# 保存预测结果
-submission = pd.DataFrame({
-    'id': test_data['id'], 
-    'answer': test_predictions.flatten()
-})
-submission.to_csv(os.path.join(ROOT_DIR, 'submission.csv'), index=False)
-
-# 保存模型
+# 保存最终模型
 torch.save(final_model.state_dict(), os.path.join(ROOT_DIR, 'best_model.pth'))
-logger.info("\nTraining completed. Best model and predictions saved.")
+logger.info("\nTraining completed. Best model saved.")

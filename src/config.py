@@ -9,5 +9,10 @@ CONFIG = {
     'batch_size': 64,
     'epochs': 120,
     'random_state': 42, 
-    'patience': 15
+    'patience': 15, 
+    'lr_scheduler': {
+        'factor': 0.5,
+        'patience': 15, # 增加学习率调整耐心值
+        'min_lr': 0.0001
+    }
 }
