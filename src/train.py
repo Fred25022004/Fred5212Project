@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, KFold
+from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,215 +9,275 @@ import os
 import logging
 from datetime import datetime
 from copy import deepcopy
+from tqdm.auto import tqdm
 
 from utils.metrics import root_mean_squared_error
 from models.mlp import MLP
 from data.preprocessor import DataPreprocessor
-from config import CONFIG, ROOT_DIR
+from config import Config, ROOT_DIR
 
-# Early Stopping 类
-class EarlyStopping:
-    def __init__(self, patience=CONFIG['patience'], min_delta=0):
-        self.patience = patience
-        self.min_delta = min_delta
-        self.counter = 0
-        self.best_loss = None
-        self.early_stop = False
-        self.best_model = None
+class ModelTrainer:
+    def __init__(self, model, config: Config):
+        self.model = model
+        self.config = config
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model.to(self.device)
+        
+        self.criterion = nn.MSELoss()
+        self.optimizer = self._create_optimizer()
+        self.scheduler = self._create_scheduler()
+        
+        self._setup_logger()
+        
+    def _setup_logger(self):
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        
+        log_file = os.path.join(ROOT_DIR, 'logs', f'training_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        file_handler = logging.FileHandler(log_file)
+        
+        console_handler = logging.StreamHandler()
+        
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+        
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
 
-    def __call__(self, model, val_loss):
-        if self.best_loss is None:
-            self.best_loss = val_loss
-            self.best_model = deepcopy(model.state_dict())
-        elif val_loss > self.best_loss - self.min_delta:
-            self.counter += 1
-            if self.counter >= self.patience:
-                self.early_stop = True
-        else:
-            self.best_loss = val_loss
-            self.best_model = deepcopy(model.state_dict())
-            self.counter = 0
+    def _create_optimizer(self):
+        if self.config.optimizer.name == 'AdamW':
+            return optim.AdamW(
+                self.model.parameters(),
+                lr=self.config.optimizer.learning_rate,
+                weight_decay=self.config.optimizer.weight_decay,
+                betas=(self.config.optimizer.beta1, self.config.optimizer.beta2)
+            )
+        elif self.config.optimizer.name == 'SGD':
+            return optim.SGD(
+                self.model.parameters(),
+                lr=self.config.optimizer.learning_rate,
+                momentum=self.config.optimizer.momentum,
+                weight_decay=self.config.optimizer.weight_decay
+            )
+        elif self.config.optimizer.name == 'Adam':
+            return optim.Adam(
+                self.model.parameters(),
+                lr=self.config.optimizer.learning_rate,
+                weight_decay=self.config.optimizer.weight_decay,
+                betas=(self.config.optimizer.beta1, self.config.optimizer.beta2)
+            )
 
-# 设置日志
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(levelname)s - %(message)s',
-                   handlers=[
-                       logging.FileHandler(f'training_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'),
-                       logging.StreamHandler()
-                   ])
-logger = logging.getLogger()
+    def _create_scheduler(self):
+        if self.config.scheduler.name == 'cosine':
+            return optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=self.config.training.num_epochs,
+                eta_min=self.config.scheduler.min_lr
+            )
+        elif self.config.scheduler.name == 'reduce_on_plateau':
+            return optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer,
+                mode='min',
+                factor=self.config.scheduler.gamma,
+                patience=self.config.scheduler.patience,
+                cooldown=self.config.scheduler.cooldown,
+                min_lr=self.config.scheduler.min_lr
+            )
+        elif self.config.scheduler.name == 'step':
+            return optim.lr_scheduler.StepLR(
+                self.optimizer,
+                step_size=self.config.scheduler.step_size,
+                gamma=self.config.scheduler.gamma
+            )
+        return None
 
-# 加载数据
-train_data = pd.read_csv(os.path.join(ROOT_DIR, 'data', 'train.csv'))
-test_data = pd.read_csv(os.path.join(ROOT_DIR, 'data', 'test.csv'))
-
-# 预处理数据
-preprocessor = DataPreprocessor()
-X_train, X_test = preprocessor.fit_transform(train_data, test_data)
-y_train = train_data['price'].values
-
-# 数据分析
-logger.info("\n" + "="*50)
-logger.info("Data Analysis:")
-logger.info(f"Training set shape: {X_train.shape}")
-logger.info(f"Test set shape: {X_test.shape}")
-logger.info("\nTarget distribution:")
-logger.info(f"Mean: {y_train.mean():.2f}")
-logger.info(f"Std: {y_train.std():.2f}")
-logger.info(f"Min: {y_train.min():.2f}")
-logger.info(f"Max: {y_train.max():.2f}")
-logger.info("="*50 + "\n")
-
-# 转换为PyTorch tensors
-X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-y_train_tensor = torch.tensor(y_train, dtype=torch.float32).view(-1, 1)
-X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-
-# K-Fold交叉验证
-logger.info("Starting K-Fold Cross Validation")
-logger.info(f"Configuration: {CONFIG}")
-
-kf = KFold(n_splits=5, shuffle=True, random_state=CONFIG['random_state'])
-cross_val_rmse = []
-best_model_state = None
-best_overall_rmse = float('inf')
-
-for fold, (train_index, val_index) in enumerate(kf.split(X_train)):
-    logger.info(f"\nFold {fold+1}/5")
-    logger.info(f"Train size: {len(train_index)}, Validation size: {len(val_index)}")
-    
-    # 在每个fold开始时重置模型
-    model = MLP(X_train.shape[1])
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=CONFIG['learning_rate'], weight_decay=CONFIG['weight_decay'])
-    # 添加学习率调度器
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer,
-    mode='min',
-    factor=CONFIG['lr_scheduler']['factor'],
-    patience=CONFIG['lr_scheduler']['patience'],
-    min_lr=CONFIG['lr_scheduler']['min_lr']
-)
-    early_stopping = EarlyStopping(patience=CONFIG['patience'])
-    
-    X_train_fold, X_val_fold = X_train_tensor[train_index], X_train_tensor[val_index]
-    y_train_fold, y_val_fold = y_train_tensor[train_index], y_train_tensor[val_index]
-    train_dataset = TensorDataset(X_train_fold, y_train_fold)
-    train_loader = DataLoader(train_dataset, batch_size=CONFIG['batch_size'], shuffle=True)
-    
-    for epoch in range(CONFIG['epochs']):
-        model.train()
-        epoch_loss = 0
+    def train_epoch(self, train_loader, val_loader=None):
+        self.model.train()
+        total_loss = 0
+        total_rmse = 0
         num_batches = 0
-        
-        for X_batch, y_batch in train_loader:
-            optimizer.zero_grad()
-            outputs = model(X_batch)
-            loss = criterion(outputs, y_batch)
+
+        progress_bar = tqdm(train_loader, desc='Training')
+        for batch_data, batch_labels in progress_bar:
+            batch_data = batch_data.to(self.device)
+            batch_labels = batch_labels.to(self.device)
+
+            self.optimizer.zero_grad()
+            outputs = self.model(batch_data)
+            loss = self.criterion(outputs, batch_labels)
+            
             loss.backward()
-            optimizer.step()
             
-            epoch_loss += loss.item()
+            if self.config.training.gradient_clip_enabled:
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    self.config.training.gradient_clip_max_norm,
+                    norm_type=self.config.training.gradient_norm_type
+                )
+            
+            self.optimizer.step()
+            
+            batch_rmse = torch.sqrt(loss).item()
+            total_loss += loss.item()
+            total_rmse += batch_rmse
             num_batches += 1
+            
+            progress_bar.set_postfix({
+                'loss': f'{loss.item():.4f}',
+                'rmse': f'{batch_rmse:.4f}'
+            })
+
+        avg_loss = total_loss / num_batches
+        avg_rmse = total_rmse / num_batches
         
-        avg_epoch_loss = epoch_loss / num_batches
+        val_metrics = self.validate(val_loader) if val_loader else None
         
-        # 验证
-        model.eval()
+        return avg_loss, avg_rmse, val_metrics
+
+    def validate(self, val_loader):
+        self.model.eval()
+        total_val_loss = 0
+        total_val_rmse = 0
+        num_val_batches = 0
+        
         with torch.no_grad():
-            val_outputs = model(X_val_fold)
-            val_rmse = root_mean_squared_error(y_val_fold.numpy(), val_outputs.numpy())
-            
-            # 更新学习率
-            scheduler.step(val_rmse)
-            
-            # 早停检查
-            early_stopping(model, val_rmse)
-            
-            if (epoch + 1) % 20 == 0:
-                logger.info(f'Epoch {epoch+1}/{CONFIG["epochs"]}:')
-                logger.info(f'  Training Loss: {avg_epoch_loss:.4f}')
-                logger.info(f'  Validation RMSE: {val_rmse:.4f}')
-                logger.info(f'  Current Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
+            for val_data, val_labels in val_loader:
+                val_data = val_data.to(self.device)
+                val_labels = val_labels.to(self.device)
+                
+                val_outputs = self.model(val_data)
+                val_loss = self.criterion(val_outputs, val_labels)
+                
+                total_val_loss += val_loss.item()
+                total_val_rmse += torch.sqrt(val_loss).item()
+                num_val_batches += 1
         
-        if early_stopping.early_stop:
-            logger.info(f"Early stopping triggered at epoch {epoch+1}")
-            break
-    
-    # 加载当前fold的最佳模型
-    model.load_state_dict(early_stopping.best_model)
-    
-    # 评估最佳模型
-    model.eval()
-    with torch.no_grad():
-        val_outputs = model(X_val_fold)
-        fold_rmse = root_mean_squared_error(y_val_fold.numpy(), val_outputs.numpy())
-    
-    cross_val_rmse.append(fold_rmse)
-    logger.info(f'Fold {fold+1} best RMSE: {fold_rmse:.4f}')
-    
-    # 保存全局最佳模型
-    if fold_rmse < best_overall_rmse:
-        best_overall_rmse = fold_rmse
-        best_model_state = deepcopy(early_stopping.best_model)
+        return {
+            'loss': total_val_loss / num_val_batches,
+            'rmse': total_val_rmse / num_val_batches
+        }
 
-logger.info("\nCross-Validation Results:")
-logger.info(f'Mean RMSE: {np.mean(cross_val_rmse):.4f}')
-logger.info(f'Std RMSE: {np.std(cross_val_rmse):.4f}')
-
-# 使用最佳模型状态初始化最终模型
-logger.info("\nTraining Final Model")
-final_model = MLP(X_train.shape[1])
-final_model.load_state_dict(best_model_state)  # 使用最佳交叉验证模型的权重初始化
-
-# 在完整训练集上微调
-train_dataset_full = TensorDataset(X_train_tensor, y_train_tensor)
-train_loader_full = DataLoader(train_dataset_full, batch_size=CONFIG['batch_size'], shuffle=True)
-optimizer = optim.Adam(final_model.parameters(), lr=CONFIG['learning_rate'])
-# 为最终模型添加学习率调度器
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer,
-    mode='min',
-    factor=0.5,
-    patience=5,
-    min_lr=1e-6
-)
-early_stopping = EarlyStopping(patience=CONFIG['patience'])
-
-for epoch in range(CONFIG['epochs']):
-    final_model.train()
-    epoch_loss = 0
-    num_batches = 0
-    
-    for X_batch, y_batch in train_loader_full:
-        optimizer.zero_grad()
-        outputs = final_model(X_batch)
-        loss = criterion(outputs, y_batch)
-        loss.backward()
-        optimizer.step()
+    def train(self, train_loader, val_loader=None):
+        best_loss = float('inf')
+        patience_counter = 0
+        best_model_state = None
         
-        epoch_loss += loss.item()
-        num_batches += 1
-    
-    avg_epoch_loss = epoch_loss / num_batches
-    
-    # 更新学习率
-    scheduler.step(avg_epoch_loss)
-    
-    early_stopping(final_model, avg_epoch_loss)
-    
-    if (epoch + 1) % 10 == 0:
-        logger.info(f'Epoch {epoch+1}/{CONFIG["epochs"]}:')
-        logger.info(f'  Training Loss: {avg_epoch_loss:.4f}')
-        logger.info(f'  Learning Rate: {optimizer.param_groups[0]["lr"]:.6f}')
-    
-    if early_stopping.early_stop:
-        logger.info(f"Early stopping triggered at epoch {epoch+1}")
-        break
+        for epoch in range(self.config.training.num_epochs):
+            epoch_loss, epoch_rmse, val_metrics = self.train_epoch(train_loader, val_loader)
+            
+            log_message = f"Epoch {epoch+1}/{self.config.training.num_epochs} - "
+            log_message += f"Train Loss: {epoch_loss:.4f}, RMSE: {epoch_rmse:.4f}"
+            
+            if val_metrics:
+                log_message += f" | Val Loss: {val_metrics['loss']:.4f}, RMSE: {val_metrics['rmse']:.4f}"
+                current_loss = val_metrics['loss']
+                
+                if self.scheduler:
+                    if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                        self.scheduler.step(val_metrics['loss'])
+                    else:
+                        self.scheduler.step()
+            else:
+                current_loss = epoch_loss
+                if self.scheduler and not isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step()
+            
+            self.logger.info(log_message)
+            
+            if current_loss < best_loss - self.config.training.early_stopping_min_delta:
+                best_loss = current_loss
+                best_model_state = deepcopy(self.model.state_dict())
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                
+            if patience_counter >= self.config.training.early_stopping_patience:
+                self.logger.info(f"Early stopping triggered at epoch {epoch+1}")
+                break
+        
+        if best_model_state:
+            self.model.load_state_dict(best_model_state)
+            
+        return self.model
 
-# 加载最佳模型状态
-final_model.load_state_dict(early_stopping.best_model)
+def main():
+    config = Config()
+    
+    train_data = pd.read_csv(os.path.join(ROOT_DIR, 'data', 'train.csv'))
+    test_data = pd.read_csv(os.path.join(ROOT_DIR, 'data', 'test.csv'))
+    
+    preprocessor = DataPreprocessor()
+    X_train, X_test = preprocessor.fit_transform(train_data, test_data)
+    y_train = train_data['price'].values
+    
+    # 第一阶段：使用train/validation split进行模型评估和调优
+    X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
+        X_train, 
+        y_train,
+        test_size=config.data.validation_split,
+        shuffle=config.data.shuffle_data,
+        random_state=config.data.random_seed
+    )
+    
+    # 用于评估的数据加载器
+    train_split_dataset = TensorDataset(
+        torch.FloatTensor(X_train_split),
+        torch.FloatTensor(y_train_split).reshape(-1, 1)
+    )
+    train_split_loader = DataLoader(
+        train_split_dataset,
+        batch_size=config.training.batch_size,
+        shuffle=True
+    )
+    
+    val_dataset = TensorDataset(
+        torch.FloatTensor(X_val_split),
+        torch.FloatTensor(y_val_split).reshape(-1, 1)
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.training.batch_size,
+        shuffle=False
+    )
+    
+    # 第一次训练：验证模型性能
+    model = MLP(X_train.shape[1])
+    trainer = ModelTrainer(model, config)
+    validated_model = trainer.train(train_split_loader, val_loader)
+    
+    # 记录验证阶段的性能
+    trainer.logger.info("Validation phase completed. Now training on full dataset...")
+    
+    # 第二阶段：使用全部训练数据重新训练
+    full_train_dataset = TensorDataset(
+        torch.FloatTensor(X_train),
+        torch.FloatTensor(y_train).reshape(-1, 1)
+    )
+    full_train_loader = DataLoader(
+        full_train_dataset,
+        batch_size=config.training.batch_size,
+        shuffle=True
+    )
+    
+    # 重新初始化模型和训练器
+    final_model = MLP(X_train.shape[1])
+    final_trainer = ModelTrainer(final_model, config)
+    final_trained_model = final_trainer.train(full_train_loader, None)  # 不使用验证集
+    
+    # 保存最终模型
+    save_path = os.path.join(ROOT_DIR, 'best_model.pth')
+    torch.save(
+        {
+            'model_state_dict': final_trained_model.state_dict(),
+            'optimizer_state_dict': final_trainer.optimizer.state_dict(),
+            'config': config,
+        },
+        save_path
+    )
+    
+    trainer.logger.info(f"Final model saved to {save_path}")
 
-# 保存最终模型
-torch.save(final_model.state_dict(), os.path.join(ROOT_DIR, 'best_model.pth'))
-logger.info("\nTraining completed. Best model saved.")
+if __name__ == "__main__":
+    main()
