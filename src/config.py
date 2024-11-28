@@ -12,7 +12,7 @@ class ModelArchConfig:
     pred_hidden_dim: int = 512
     expansion_factor: int = 2
     path3_expansion: int = 3
-    dropout_rate: float = 0.15
+    dropout_rate: float = 0.2
     init_method: Literal['kaiming', 'xavier'] = 'kaiming'
     nonlinearity: str = 'relu'
 

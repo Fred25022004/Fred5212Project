@@ -14,7 +14,7 @@ class DataPreprocessor:
         
         # Fill missing values for numerical variables
         for col in self.numerical_columns:
-            df[col] = df[col].interpolate(method='linear')
+            df[col] = df[col].fillna(df[col].mean())
         
         # Fill missing values for categorical variables
         for col in self.categorical_columns:
@@ -33,17 +33,13 @@ class DataPreprocessor:
         df['hours_per_year'] = np.where(df['vehicle_age'] == 0, 0, 
                                       df['operating_hours'] / df['vehicle_age'].clip(lower=1))
         
-        # Efficiency-related features
-        df['power_efficiency'] = np.where(df['engine_capacity'] == 0, 0,
-                                        df['efficiency'] / df['engine_capacity'].clip(lower=1))
-        
         # Cost-related features
         df['registration_cost_per_capacity'] = np.where(df['engine_capacity'] == 0, 0,
                                                       df['registration_fees'] / df['engine_capacity'].clip(lower=1))
         
         # Add engineered features to numerical columns
         self.numerical_columns.extend(['vehicle_age', 'hours_per_year', 
-                                     'power_efficiency', 'registration_cost_per_capacity'])
+                                     'registration_cost_per_capacity'])
         
         return df
     
@@ -66,18 +62,21 @@ class DataPreprocessor:
         combined_data = self._fill_missing_values(combined_data)
         combined_data = self._create_engineered_features(combined_data)
         
-        # Process categorical features
+        # Process categorical features (One-Hot Encoding)
         cat_features = self.one_hot_encoder.fit_transform(combined_data[self.categorical_columns])
         
-        # Process numerical features
-        num_features = self.scaler.fit_transform(combined_data[self.numerical_columns])
+        # Split combined data back into train and test
+        combined_data_train = combined_data.iloc[:len(train_df), :]
+        combined_data_test = combined_data.iloc[len(train_df):, :]
         
-        # Combine all features
-        all_features = np.hstack([cat_features, num_features])
+        # Standardize numerical features (fit only on training data)
+        self.scaler.fit(combined_data_train[self.numerical_columns])  # Fit on training data
+        num_features_train = self.scaler.transform(combined_data_train[self.numerical_columns])  # Transform training data
+        num_features_test = self.scaler.transform(combined_data_test[self.numerical_columns])  # Transform test data
         
-        # Split back into train and test
-        X_train = all_features[:len(train_df)]
-        X_test = all_features[len(train_df):]
+        # Combine categorical and numerical features
+        X_train = np.hstack([cat_features[:len(train_df)], num_features_train])
+        X_test = np.hstack([cat_features[len(train_df):], num_features_test])
         
         return X_train, X_test
     
@@ -92,7 +91,10 @@ class DataPreprocessor:
         df = self._fill_missing_values(df)
         df = self._create_engineered_features(df)
         
+        # Transform categorical features using the fitted encoder
         cat_features = self.one_hot_encoder.transform(df[self.categorical_columns])
+        
+        # Transform numerical features using the scaler fitted on training data
         num_features = self.scaler.transform(df[self.numerical_columns])
         
         return np.hstack([cat_features, num_features])

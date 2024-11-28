@@ -10,11 +10,12 @@ import logging
 from datetime import datetime
 from copy import deepcopy
 from tqdm.auto import tqdm
-
 from utils.metrics import root_mean_squared_error
-from models.mlp import MLP
-from data.preprocessor import DataPreprocessor
-from config import Config, ROOT_DIR
+from models.mlp import MLP  # 原有代码
+from data.preprocessor import DataPreprocessor  # 原有代码
+from config import Config, ROOT_DIR  # 原有代码
+import matplotlib.pyplot as plt  # 新增导入，用于绘图
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class ModelTrainer:
     def __init__(self, model, config: Config):
@@ -28,6 +29,11 @@ class ModelTrainer:
         self.scheduler = self._create_scheduler()
         
         self._setup_logger()
+
+        # 新增：保存训练和验证指标的历史记录
+        self.train_loss_history = []
+        self.val_loss_history = []
+        self.val_rmse_history = []
         
     def _setup_logger(self):
         self.logger = logging.getLogger(__name__)
@@ -92,6 +98,33 @@ class ModelTrainer:
                 gamma=self.config.scheduler.gamma
             )
         return None
+
+    def _plot_metrics(self, save_path=None, start_epoch=5):
+        # 如果epoch数量不足，直接返回
+        if len(self.train_loss_history) <= start_epoch:
+            return
+            
+        plt.figure(figsize=(10, 6))
+        # 从第start_epoch个epoch开始画图
+        epochs = range(start_epoch + 1, len(self.train_loss_history) + 1)
+        
+        plt.plot(epochs, self.train_loss_history[start_epoch:], label="Train Loss", marker='o')
+        
+        if self.val_loss_history:
+            plt.plot(epochs, self.val_loss_history[start_epoch:], label="Validation Loss", marker='o')
+            plt.plot(epochs, self.val_rmse_history[start_epoch:], label="Validation RMSE", marker='x')
+        
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss / RMSE")
+        plt.title(f"Training and Validation Metrics (After Epoch {start_epoch})")
+        plt.legend()
+        plt.grid(True)
+        
+        if save_path:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path)
+        
+        plt.close()
 
     def train_epoch(self, train_loader, val_loader=None):
         self.model.train()
@@ -167,6 +200,12 @@ class ModelTrainer:
         for epoch in range(self.config.training.num_epochs):
             epoch_loss, epoch_rmse, val_metrics = self.train_epoch(train_loader, val_loader)
             
+            # 新增：保存训练和验证损失
+            self.train_loss_history.append(epoch_loss)
+            if val_metrics:
+                self.val_loss_history.append(val_metrics['loss'])
+                self.val_rmse_history.append(val_metrics['rmse'])
+            
             log_message = f"Epoch {epoch+1}/{self.config.training.num_epochs} - "
             log_message += f"Train Loss: {epoch_loss:.4f}, RMSE: {epoch_rmse:.4f}"
             
@@ -192,6 +231,10 @@ class ModelTrainer:
                 patience_counter = 0
             else:
                 patience_counter += 1
+
+            # 从第5个epoch开始绘制折线图并保存
+            save_path = os.path.join(ROOT_DIR, 'plots', 'training_metrics.png')
+            self._plot_metrics(save_path, start_epoch=5)
                 
             if patience_counter >= self.config.training.early_stopping_patience:
                 self.logger.info(f"Early stopping triggered at epoch {epoch+1}")
