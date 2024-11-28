@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -30,10 +29,10 @@ class ModelTrainer:
         
         self._setup_logger()
 
-        # 新增：保存训练和验证指标的历史记录
-        self.train_loss_history = []
-        self.val_loss_history = []
+        # 记录训练和验证RMSE的历史记录
+        self.train_rmse_history = []
         self.val_rmse_history = []
+        self.is_first_stage = True
         
     def _setup_logger(self):
         self.logger = logging.getLogger(__name__)
@@ -100,29 +99,31 @@ class ModelTrainer:
         return None
 
     def _plot_metrics(self, save_path=None, start_epoch=5):
+        if not self.is_first_stage:
+            return
+            
         # 如果epoch数量不足，直接返回
-        if len(self.train_loss_history) <= start_epoch:
+        if len(self.train_rmse_history) <= start_epoch:
             return
             
         plt.figure(figsize=(10, 6))
         # 从第start_epoch个epoch开始画图
-        epochs = range(start_epoch + 1, len(self.train_loss_history) + 1)
+        epochs = range(start_epoch + 1, len(self.train_rmse_history) + 1)
         
-        plt.plot(epochs, self.train_loss_history[start_epoch:], label="Train Loss", marker='o')
-        
-        if self.val_loss_history:
-            plt.plot(epochs, self.val_loss_history[start_epoch:], label="Validation Loss", marker='o')
-            plt.plot(epochs, self.val_rmse_history[start_epoch:], label="Validation RMSE", marker='x')
+        plt.plot(epochs, self.train_rmse_history[start_epoch:], label="Train RMSE", marker='o')
+        plt.plot(epochs, self.val_rmse_history[start_epoch:], label="Validation RMSE", marker='x')
         
         plt.xlabel("Epoch")
-        plt.ylabel("Loss / RMSE")
-        plt.title(f"Training and Validation Metrics (After Epoch {start_epoch})")
+        plt.ylabel("RMSE")
+        plt.title(f"Training and Validation RMSE (After Epoch {start_epoch})")
         plt.legend()
         plt.grid(True)
         
-        if save_path:
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            plt.savefig(save_path)
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_path = os.path.join(ROOT_DIR, 'plots', f'training_metrics_{timestamp}.png')
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path)
         
         plt.close()
 
@@ -200,11 +201,11 @@ class ModelTrainer:
         for epoch in range(self.config.training.num_epochs):
             epoch_loss, epoch_rmse, val_metrics = self.train_epoch(train_loader, val_loader)
             
-            # 新增：保存训练和验证损失
-            self.train_loss_history.append(epoch_loss)
-            if val_metrics:
-                self.val_loss_history.append(val_metrics['loss'])
-                self.val_rmse_history.append(val_metrics['rmse'])
+            # 只在第一阶段记录RMSE
+            if self.is_first_stage:
+                self.train_rmse_history.append(epoch_rmse)
+                if val_metrics:
+                    self.val_rmse_history.append(val_metrics['rmse'])
             
             log_message = f"Epoch {epoch+1}/{self.config.training.num_epochs} - "
             log_message += f"Train Loss: {epoch_loss:.4f}, RMSE: {epoch_rmse:.4f}"
@@ -233,8 +234,7 @@ class ModelTrainer:
                 patience_counter += 1
 
             # 从第5个epoch开始绘制折线图并保存
-            save_path = os.path.join(ROOT_DIR, 'plots', 'training_metrics.png')
-            self._plot_metrics(save_path, start_epoch=5)
+            self._plot_metrics(start_epoch=5)
                 
             if patience_counter >= self.config.training.early_stopping_patience:
                 self.logger.info(f"Early stopping triggered at epoch {epoch+1}")
@@ -252,19 +252,11 @@ def main():
     test_data = pd.read_csv(os.path.join(ROOT_DIR, 'data', 'test.csv'))
     
     preprocessor = DataPreprocessor()
-    X_train, X_test = preprocessor.fit_transform(train_data, test_data)
-    y_train = train_data['price'].values
-    
-    # 第一阶段：使用train/validation split进行模型评估和调优
-    X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
-        X_train, 
-        y_train,
-        test_size=config.data.validation_split,
-        shuffle=config.data.shuffle_data,
-        random_state=config.data.random_seed
+    X_train_split, X_val_split, y_train_split, y_val_split, X_test = preprocessor.fit_transform(
+        train_data, test_data, validation_split=config.data.validation_split, random_seed=config.data.random_seed
     )
     
-    # 用于评估的数据加载器
+    # Create DataLoaders for training and validation
     train_split_dataset = TensorDataset(
         torch.FloatTensor(X_train_split),
         torch.FloatTensor(y_train_split).reshape(-1, 1)
@@ -285,18 +277,19 @@ def main():
         shuffle=False
     )
     
-    # 第一次训练：验证模型性能
-    model = MLP(X_train.shape[1])
+    # First stage: evaluate model performance using validation set
+    model = MLP(X_train_split.shape[1])
     trainer = ModelTrainer(model, config)
+    trainer.is_first_stage = True
     validated_model = trainer.train(train_split_loader, val_loader)
     
-    # 记录验证阶段的性能
+    # Log validation phase results
     trainer.logger.info("Validation phase completed. Now training on full dataset...")
     
-    # 第二阶段：使用全部训练数据重新训练
+    # Second stage: train on full dataset
     full_train_dataset = TensorDataset(
-        torch.FloatTensor(X_train),
-        torch.FloatTensor(y_train).reshape(-1, 1)
+        torch.FloatTensor(X_train_split),
+        torch.FloatTensor(y_train_split).reshape(-1, 1)
     )
     full_train_loader = DataLoader(
         full_train_dataset,
@@ -304,12 +297,12 @@ def main():
         shuffle=True
     )
     
-    # 重新初始化模型和训练器
-    final_model = MLP(X_train.shape[1])
+    final_model = MLP(X_train_split.shape[1])
     final_trainer = ModelTrainer(final_model, config)
-    final_trained_model = final_trainer.train(full_train_loader, None)  # 不使用验证集
+    final_trainer.is_first_stage = False
+    final_trained_model = final_trainer.train(full_train_loader, None)
     
-    # 保存最终模型
+    # Save final model
     save_path = os.path.join(ROOT_DIR, 'best_model.pth')
     torch.save(
         {

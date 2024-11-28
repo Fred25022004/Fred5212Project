@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class MLP(nn.Module):
     def __init__(self, input_dim, feature_dim=256, expansion_factor=2, dropout_rate=0.1,
-                 pred_hidden_dim=128, init_method='kaiming', nonlinearity='relu', path2_expansion=2):
+                 pred_hidden_dim=128, init_method='kaiming', nonlinearity='relu', path3_expansion=2):
         super().__init__()
         
         class Config:
@@ -39,16 +39,8 @@ class MLP(nn.Module):
             )
             self.pyramid_layers.append(layer)
 
-        # 第三路径
-        self.path2_process = nn.Sequential(
-            nn.Linear(feature_dim, feature_dim * path2_expansion),
-            nn.GELU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(feature_dim * path2_expansion, feature_dim // 2)
-        )
-
         # 跨层特征聚合
-        total_dims = sum(self.pyramid_dims) + feature_dim // 2  # 添加第三路径的维度
+        total_dims = sum(self.pyramid_dims)  # 所有层的维度之和
         self.feature_aggregation = nn.Sequential(
             nn.Linear(total_dims, feature_dim),
             nn.LayerNorm(feature_dim),
@@ -92,10 +84,6 @@ class MLP(nn.Module):
         for layer in self.pyramid_layers:
             current_features = layer(current_features)
             layer_features.append(current_features)
-
-        # 第三路径处理
-        path2_features = self.path2_process(x)
-        layer_features.append(path2_features)
 
         # 特征聚合
         concatenated_features = torch.cat(layer_features, dim=-1)

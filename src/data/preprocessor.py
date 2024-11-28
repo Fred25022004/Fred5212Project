@@ -1,10 +1,12 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.model_selection import train_test_split
 
 class DataPreprocessor:
     def __init__(self):
-        self.one_hot_encoder = OneHotEncoder(sparse_output=False)
+        # 修改 handle_unknown='ignore'，以处理未知类别
+        self.one_hot_encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
         self.scaler = StandardScaler()
         self.categorical_columns = ['manufacturer', 'model', 'gearbox_type', 'fuel_type']
         self.numerical_columns = ['year', 'engine_capacity', 'operating_hours', 'efficiency', 'registration_fees']
@@ -43,9 +45,10 @@ class DataPreprocessor:
         
         return df
     
-    def fit_transform(self, train_df, test_df):
+    def fit_transform(self, train_df, test_df, validation_split=0.2, random_seed=42):
         """
-        Fit preprocessor on training data and transform both training and test data
+        Fit preprocessor on training data, split into training and validation sets,
+        and transform both training and test data.
         """
         # Create a copy of the DataFrames
         train_df = train_df.copy()
@@ -57,28 +60,41 @@ class DataPreprocessor:
         if 'id' in test_df.columns:
             test_df = test_df.drop('id', axis=1)
         
-        # Combine train and test for preprocessing
-        combined_data = pd.concat([train_df, test_df], ignore_index=True)
-        combined_data = self._fill_missing_values(combined_data)
-        combined_data = self._create_engineered_features(combined_data)
+        # Fill missing values and create engineered features
+        train_df = self._fill_missing_values(train_df)
+        test_df = self._fill_missing_values(test_df)
+        train_df = self._create_engineered_features(train_df)
+        test_df = self._create_engineered_features(test_df)
+        
+        # Split train data into training and validation sets
+        train_features = train_df.drop(columns=['price'])
+        train_labels = train_df['price']
+        
+        X_train, X_val, y_train, y_val = train_test_split(
+            train_features,
+            train_labels,
+            test_size=validation_split,
+            random_state=random_seed
+        )
         
         # Process categorical features (One-Hot Encoding)
-        cat_features = self.one_hot_encoder.fit_transform(combined_data[self.categorical_columns])
-        
-        # Split combined data back into train and test
-        combined_data_train = combined_data.iloc[:len(train_df), :]
-        combined_data_test = combined_data.iloc[len(train_df):, :]
+        self.one_hot_encoder.fit(train_features[self.categorical_columns])  # Fit on all categorical features
+        X_train_cat = self.one_hot_encoder.transform(X_train[self.categorical_columns])
+        X_val_cat = self.one_hot_encoder.transform(X_val[self.categorical_columns])
+        X_test_cat = self.one_hot_encoder.transform(test_df[self.categorical_columns])  # 修正：忽略未知类别
         
         # Standardize numerical features (fit only on training data)
-        self.scaler.fit(combined_data_train[self.numerical_columns])  # Fit on training data
-        num_features_train = self.scaler.transform(combined_data_train[self.numerical_columns])  # Transform training data
-        num_features_test = self.scaler.transform(combined_data_test[self.numerical_columns])  # Transform test data
+        self.scaler.fit(X_train[self.numerical_columns])  # Fit on training numerical columns
+        X_train_num = self.scaler.transform(X_train[self.numerical_columns])
+        X_val_num = self.scaler.transform(X_val[self.numerical_columns])
+        X_test_num = self.scaler.transform(test_df[self.numerical_columns])
         
         # Combine categorical and numerical features
-        X_train = np.hstack([cat_features[:len(train_df)], num_features_train])
-        X_test = np.hstack([cat_features[len(train_df):], num_features_test])
+        X_train_combined = np.hstack([X_train_cat, X_train_num])
+        X_val_combined = np.hstack([X_val_cat, X_val_num])
+        X_test_combined = np.hstack([X_test_cat, X_test_num])
         
-        return X_train, X_test
+        return X_train_combined, X_val_combined, y_train.values, y_val.values, X_test_combined
     
     def transform(self, df):
         """
@@ -92,7 +108,7 @@ class DataPreprocessor:
         df = self._create_engineered_features(df)
         
         # Transform categorical features using the fitted encoder
-        cat_features = self.one_hot_encoder.transform(df[self.categorical_columns])
+        cat_features = self.one_hot_encoder.transform(df[self.categorical_columns])  # 修正：忽略未知类别
         
         # Transform numerical features using the scaler fitted on training data
         num_features = self.scaler.transform(df[self.numerical_columns])

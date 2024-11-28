@@ -30,7 +30,7 @@ def main():
     # 预处理数据
     logger.info('Preprocessing data...')
     preprocessor = DataPreprocessor()
-    X_train, X_test = preprocessor.fit_transform(train_data, test_data)
+    X_train, X_val, y_train, y_val, X_test = preprocessor.fit_transform(train_data, test_data)
 
     # 转换为PyTorch tensor
     X_test_tensor = torch.FloatTensor(X_test).to(device)
