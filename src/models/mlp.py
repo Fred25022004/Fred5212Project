@@ -3,20 +3,16 @@ import torch.nn as nn
 
 class MLP(nn.Module):
     def __init__(self, input_dim, feature_dim=256, expansion_factor=2, dropout_rate=0.1,
-                 pred_hidden_dim=128, init_method='kaiming', nonlinearity='relu', path3_expansion=2):
+                 pred_hidden_dim=128, init_method='kaiming', nonlinearity='relu', path2_expansion=2):
         super().__init__()
         
         class Config:
             pass
         config = Config()
         config.input_dim = input_dim
-        config.feature_dim = feature_dim 
-        config.expansion_factor = expansion_factor
+        config.feature_dim = feature_dim
         config.dropout_rate = dropout_rate
-        config.pred_hidden_dim = pred_hidden_dim
         config.init_method = init_method
-        config.nonlinearity = nonlinearity
-        config.path3_expansion = path3_expansion
 
         # 输入处理
         self.input_process = nn.Sequential(
@@ -26,47 +22,38 @@ class MLP(nn.Module):
             nn.Dropout(config.dropout_rate)
         )
 
-        # 特征金字塔结构
-        self.pyramid_dims = [feature_dim, feature_dim*2, feature_dim//2, feature_dim]
-        
-        # Block 1
-        self.pyramid1_layers = nn.ModuleList([
-            self._create_pyramid_branch(feature_dim, dim) for dim in self.pyramid_dims
-        ])
-        self.pyramid1_norms = nn.ModuleList([
-            nn.LayerNorm(dim) for dim in self.pyramid_dims
-        ])
-        self.pyramid1_projs = nn.ModuleList([
-            nn.Linear(dim, feature_dim) for dim in self.pyramid_dims
-        ])
-        self.fusion1 = nn.Parameter(torch.ones(len(self.pyramid_dims)) / len(self.pyramid_dims))
-        self.gate1 = nn.Sequential(
-            nn.Linear(feature_dim, len(self.pyramid_dims)),
-            nn.Softmax(dim=-1)
-        )
+        # 定义金字塔层维度（从大到小）
+        self.pyramid_dims = [
+            feature_dim,                    # 基础维度
+            feature_dim // 2,               # 第二层
+            feature_dim // 4                # 第三层
+        ]
 
-        # Block 2 
-        self.pyramid2_layers = nn.ModuleList([
-            self._create_pyramid_branch(feature_dim, dim) for dim in self.pyramid_dims
-        ])
-        self.pyramid2_norms = nn.ModuleList([
-            nn.LayerNorm(dim) for dim in self.pyramid_dims
-        ])
-        self.pyramid2_projs = nn.ModuleList([
-            nn.Linear(dim, feature_dim) for dim in self.pyramid_dims
-        ])
-        self.fusion2 = nn.Parameter(torch.ones(len(self.pyramid_dims)) / len(self.pyramid_dims))
-        self.gate2 = nn.Sequential(
-            nn.Linear(feature_dim, len(self.pyramid_dims)),
-            nn.Softmax(dim=-1)
+        # 创建金字塔层
+        self.pyramid_layers = nn.ModuleList()
+        for i in range(len(self.pyramid_dims)-1):
+            layer = PyramidLayer(
+                in_dim=self.pyramid_dims[i],
+                out_dim=self.pyramid_dims[i+1],
+                dropout_rate=dropout_rate
+            )
+            self.pyramid_layers.append(layer)
+
+        # 第三路径
+        self.path2_process = nn.Sequential(
+            nn.Linear(feature_dim, feature_dim * path2_expansion),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(feature_dim * path2_expansion, feature_dim // 2)
         )
 
         # 跨层特征聚合
-        self.global_pool = nn.AdaptiveAvgPool1d(1)
-        self.feature_fusion = nn.Sequential(
-            nn.Linear(feature_dim * 3, feature_dim),
+        total_dims = sum(self.pyramid_dims) + feature_dim // 2  # 添加第三路径的维度
+        self.feature_aggregation = nn.Sequential(
+            nn.Linear(total_dims, feature_dim),
             nn.LayerNorm(feature_dim),
-            nn.GELU()
+            nn.GELU(),
+            nn.Dropout(dropout_rate)
         )
 
         # 预测头
@@ -83,16 +70,6 @@ class MLP(nn.Module):
 
         self._init_parameters(config)
 
-    def _create_pyramid_branch(self, in_dim, out_dim):
-        return nn.Sequential(
-            nn.Linear(in_dim, out_dim),
-            nn.GELU(),
-            nn.Dropout(0.1),
-            nn.Linear(out_dim, out_dim),
-            nn.GELU(),
-            nn.Dropout(0.1)
-        )
-
     def _init_parameters(self, config):
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -103,51 +80,84 @@ class MLP(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    def _pyramid_forward(self, x, pyramid_layers, pyramid_norms, pyramid_projs, fusion_weights, gate):
-        # 动态权重
-        dynamic_weights = gate(x)
-        
-        outputs = []
-        for i, (layer, norm, proj) in enumerate(zip(pyramid_layers, pyramid_norms, pyramid_projs)):
-            branch_out = layer(x)
-            branch_out = norm(branch_out)
-            branch_out = proj(branch_out)
-            outputs.append(branch_out * (fusion_weights[i] + dynamic_weights[:, i:i+1]))
-        
-        return sum(outputs)
-
     def forward(self, x):
         # 输入处理
         x = self.input_process(x)
-        identity = x
-
-        # Block 1
-        b1_out = self._pyramid_forward(
-            x, 
-            self.pyramid1_layers,
-            self.pyramid1_norms,
-            self.pyramid1_projs,
-            self.fusion1,
-            self.gate1
-        )
         
-        # Block 2
-        b2_out = self._pyramid_forward(
-            b1_out,
-            self.pyramid2_layers,
-            self.pyramid2_norms,
-            self.pyramid2_projs,
-            self.fusion2,
-            self.gate2
-        )
+        # 存储每层特征
+        layer_features = [x]
+        current_features = x
+
+        # 逐层处理
+        for layer in self.pyramid_layers:
+            current_features = layer(current_features)
+            layer_features.append(current_features)
+
+        # 第三路径处理
+        path2_features = self.path2_process(x)
+        layer_features.append(path2_features)
 
         # 特征聚合
-        global_feat = self.global_pool(x.unsqueeze(-1)).squeeze(-1)
-        concat_features = torch.cat([identity, b1_out, b2_out], dim=-1)
-        fused_features = self.feature_fusion(concat_features)
-        
-        # 添加全局信息
-        final_features = fused_features + global_feat
+        concatenated_features = torch.cat(layer_features, dim=-1)
+        aggregated_features = self.feature_aggregation(concatenated_features)
 
         # 预测
-        return self.pred_layers(final_features)
+        return self.pred_layers(aggregated_features)
+
+
+class PyramidLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, dropout_rate=0.1):
+        super().__init__()
+        
+        # 主要特征变换
+        self.transform = nn.Sequential(
+            nn.LayerNorm(in_dim),
+            nn.Linear(in_dim, in_dim * 2),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(in_dim * 2, out_dim)
+        )
+        
+        # 注意力机制
+        self.attention = nn.MultiheadAttention(
+            out_dim,
+            num_heads=max(1, out_dim // 32),
+            dropout=dropout_rate,
+            batch_first=True
+        )
+        
+        # 特征增强
+        self.enhance = nn.Sequential(
+            nn.LayerNorm(out_dim),
+            nn.Linear(out_dim, out_dim * 2),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(out_dim * 2, out_dim)
+        )
+        
+        # 输出归一化
+        self.norm = nn.LayerNorm(out_dim)
+        
+        # 局部残差
+        self.local_res = nn.Sequential(
+            nn.Linear(in_dim, out_dim),
+            nn.GELU()
+        ) if in_dim != out_dim else nn.Identity()
+
+    def forward(self, x):
+        # 主变换
+        transformed = self.transform(x)
+        
+        # 注意力处理
+        attended, _ = self.attention(transformed, transformed, transformed)
+        
+        # 特征增强
+        enhanced = self.enhance(attended)
+        
+        # 残差连接（如果维度相同）
+        residual = self.local_res(x)
+        
+        # 最终输出
+        output = self.norm(enhanced + residual)
+        
+        return output

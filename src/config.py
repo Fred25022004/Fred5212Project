@@ -8,7 +8,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 @dataclass
 class ModelArchConfig:
     input_dim: int = 197
-    feature_dim: int = 256
+    feature_dim: int = 512
     pred_hidden_dim: int = 512
     expansion_factor: int = 2
     path3_expansion: int = 3
